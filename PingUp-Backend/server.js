@@ -6,7 +6,7 @@ const { createAdapter } = require('@socket.io/redis-adapter');
 const cors = require('cors');
 const mongoose = require('mongoose');
 
-const { pubClient, subClient, redisClient } = require('./config/redis');
+const { pubClient, subClient, redisClient, redisReady } = require('./config/redis');
 const { messageQueue } = require('./services/messageQueue');
 
 const User = require('./models/User');
@@ -639,6 +639,7 @@ io.on('connection', async (socket) => {
     // Sync role from DB
     socket.user.role = dbUser.role;
 
+    await redisClient.sAdd(`user:sockets:${socket.user.id}`, socket.id);
     await redisClient.sAdd('users:online', socket.user.id);
     await User.findByIdAndUpdate(socket.user.id, { online: true, socketId: socket.id });
     await broadcastUserList();
@@ -1157,8 +1158,12 @@ io.on('connection', async (socket) => {
 
     // ── Disconnect ─────────────────────────────────────────────────
     socket.on('disconnect', safeSocketHandler(socket, 'disconnect', async () => {
-        await redisClient.sRem('users:online', socket.user.id);
-        await User.findByIdAndUpdate(socket.user.id, { online: false, socketId: null });
+        await redisClient.sRem(`user:sockets:${socket.user.id}`, socket.id);
+        const socketCount = await redisClient.sCard(`user:sockets:${socket.user.id}`);
+        if (socketCount === 0) {
+            await redisClient.sRem('users:online', socket.user.id);
+            await User.findByIdAndUpdate(socket.user.id, { online: false, socketId: null });
+        }
 
         // Notify text channel
         if (socket.currentRoom) {
@@ -1184,6 +1189,7 @@ io.on('connection', async (socket) => {
 mongoose.connect(process.env.MONGO_URI)
     .then(async () => {
         console.log('✅ MongoDB connected');
+        await redisReady;
         await seedRooms();
         server.listen(process.env.PORT || 3001, () =>
             console.log(`🚀 Server on http://localhost:${process.env.PORT || 3001}`)

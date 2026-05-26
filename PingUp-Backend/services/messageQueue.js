@@ -1,13 +1,19 @@
 const { Queue, Worker } = require('bullmq');
 const Message = require('../models/Message');
+const { ioRedisClient } = require('../config/redis');
 
 const queueName = 'chat-messages';
-const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
 // Setup BullMQ Queue
 const messageQueue = new Queue(queueName, {
-    connection: {
-        url: redisUrl
+    connection: ioRedisClient,
+    defaultJobOptions: {
+        attempts: 5,
+        backoff: {
+            type: 'exponential',
+            delay: 1000
+        },
+        removeOnFail: false
     }
 });
 
@@ -39,9 +45,7 @@ const messageWorker = new Worker(queueName, async (job) => {
         throw error;
     }
 }, {
-    connection: {
-        url: redisUrl
-    }
+    connection: ioRedisClient
 });
 
 messageWorker.on('completed', job => {
