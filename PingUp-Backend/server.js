@@ -2,8 +2,12 @@ require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
+const { createAdapter } = require('@socket.io/redis-adapter');
 const cors = require('cors');
 const mongoose = require('mongoose');
+
+const { pubClient, subClient, redisClient, redisReady } = require('./config/redis');
+const { messageQueue } = require('./services/messageQueue');
 
 const User = require('./models/User');
 const Room = require('./models/Room');
@@ -25,6 +29,7 @@ const io = new Server(server, {
         credentials: true
     }
 });
+io.adapter(createAdapter(pubClient, subClient));
 
 const allowedOrigins = [
     "http://localhost:5173",
@@ -57,7 +62,12 @@ function safeSocketHandler(socket, eventName, handler, clientMessage = 'Somethin
 }
 // ─── Broadcast helpers ────────────────────────────────────────────
 async function broadcastUserList() {
-    const users = await User.find({ online: true });
+    const onlineUserIds = await redisClient.sMembers('users:online');
+    if (onlineUserIds.length === 0) {
+        io.emit('users:update', []);
+        return;
+    }
+    const users = await User.find({ _id: { $in: onlineUserIds } });
     io.emit('users:update', users.map(u => u.toSafeObject()));
 }
 
@@ -629,6 +639,8 @@ io.on('connection', async (socket) => {
     // Sync role from DB
     socket.user.role = dbUser.role;
 
+    await redisClient.sAdd(`user:sockets:${socket.user.id}`, socket.id);
+    await redisClient.sAdd('users:online', socket.user.id);
     await User.findByIdAndUpdate(socket.user.id, { online: true, socketId: socket.id });
     await broadcastUserList();
 
@@ -754,7 +766,10 @@ io.on('connection', async (socket) => {
                 if (!hasPermission(freshUser.role, ROLES.MEMBER))
                     return socket.emit('error:permission', 'You cannot send messages.');
 
-                const msg = await Message.create({
+                const msgId = new mongoose.Types.ObjectId();
+                
+                await messageQueue.add('send-message', {
+                    _id: msgId,
                     roomName: resolvedRoom,
                     userId: socket.user.id,
                     username: socket.user.username,
@@ -763,17 +778,8 @@ io.on('connection', async (socket) => {
                     parentMessageId: parentMessageId || null,
                 });
 
-                if (parentMessageId) {
-                    await Message.findByIdAndUpdate(
-                        parentMessageId,
-                        {
-                            $inc: { replyCount: 1 }
-                        }
-                    );
-                }
-
                 const payload = {
-                    id: msg._id.toString(), userId: socket.user.id,
+                    id: msgId.toString(), userId: socket.user.id,
                     username: socket.user.username, role: freshUser.role,
                     text: trimmed, timestamp: msg.createdAt, deleted: false, pinned: false,
                     parentMessageId: msg.parentMessageId,
@@ -1152,7 +1158,12 @@ io.on('connection', async (socket) => {
 
     // ── Disconnect ─────────────────────────────────────────────────
     socket.on('disconnect', safeSocketHandler(socket, 'disconnect', async () => {
-        await User.findByIdAndUpdate(socket.user.id, { online: false, socketId: null });
+        await redisClient.sRem(`user:sockets:${socket.user.id}`, socket.id);
+        const socketCount = await redisClient.sCard(`user:sockets:${socket.user.id}`);
+        if (socketCount === 0) {
+            await redisClient.sRem('users:online', socket.user.id);
+            await User.findByIdAndUpdate(socket.user.id, { online: false, socketId: null });
+        }
 
         // Notify text channel
         if (socket.currentRoom) {
@@ -1178,6 +1189,7 @@ io.on('connection', async (socket) => {
 mongoose.connect(process.env.MONGO_URI)
     .then(async () => {
         console.log('✅ MongoDB connected');
+        await redisReady;
         await seedRooms();
         server.listen(process.env.PORT || 3001, () =>
             console.log(`🚀 Server on http://localhost:${process.env.PORT || 3001}`)
