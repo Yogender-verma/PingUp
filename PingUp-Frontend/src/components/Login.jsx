@@ -1,5 +1,9 @@
 import { useState } from 'react';
+<<<<<<< HEAD
 import { FiEye, FiEyeOff } from "react-icons/fi";
+=======
+import { getApiUrl } from '../api';
+>>>>>>> 9f0fbde (Create PingUp-Frontend/src/api.js with getApiUrl helper)
 
 export default function Login({ onLogin, onSwitch }) {
   const [email, setEmail] = useState('');
@@ -12,7 +16,7 @@ export default function Login({ onLogin, onSwitch }) {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      const res = await fetch('https://pingup-backend-1.onrender.com/api/login', {
+      const res = await fetch(getApiUrl('/api/login'), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username: email.trim(), password }),
       });
