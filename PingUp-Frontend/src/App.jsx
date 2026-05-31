@@ -206,6 +206,18 @@ const [threadReplies, setThreadReplies] = useState([]);
     );
     socket.on('error:general', msg => console.error('[socket]', msg));
 
+    socket.on('connect_error', (err) => {
+      if (['INVALID_TOKEN', 'AUTH_REQUIRED', 'USER_NOT_FOUND'].includes(err.message)) {
+        alert('Your session has expired. Please log in again.');
+        handleLogout();
+      }
+    });
+
+    socket.on('disconnect', (reason) => {
+      if (reason === 'io server disconnect') {
+        handleLogout();
+      }
+    });
     return () => socket.removeAllListeners();
   }, [token, currentUser?.id]);
 
