@@ -631,12 +631,15 @@ async function processCommand(socket, roomName, text) {
 io.use(socketAuthMiddleware);
 
 io.on('connection', async (socket) => {
-    const dbUser = await User.findById(socket.user.id);
-    if (!dbUser) return socket.disconnect();
-    if (dbUser.banned) {
-        socket.emit('kicked', { by: 'server (banned)' });
-        return socket.disconnect();
-    }
+    let dbUser = null;
+    try{
+        dbUser = await User.findById(socket.user.id);
+        if (!dbUser) return socket.disconnect();
+        if (dbUser.banned) {
+            socket.emit('kicked', { by: 'server (banned)' });
+            return socket.disconnect();
+        }
+    
 
     // Sync role from DB
     socket.user.role = dbUser.role;
@@ -650,7 +653,7 @@ io.on('connection', async (socket) => {
     const rooms = await Room.find().sort({ category: 1, order: 1, createdAt: 1 });
     const categoryMap = new Map();
     for (const r of rooms) {
-        if (r.isPrivate && dbUser.role === ROLES.MEMBER) continue;
+        if (r.isPrivate && socket.user.role === ROLES.MEMBER) continue;
         const catKey = r.category || 'general';
         if (!categoryMap.has(catKey))
             categoryMap.set(catKey, { id: `cat-${catKey}`, name: catKey, channels: [] });
@@ -658,12 +661,18 @@ io.on('connection', async (socket) => {
     }
     socket.emit('structure:update', [...categoryMap.values()]);
     console.log(`[+] ${socket.user.username} (${socket.user.role})`);
+}catch(err){
+    console.error('[connection] setup error:', err);
+    socket.emit('error:general', 'Connection setup failed.');
+    socket.disconnect();
+    return;
+}
 
     // ── Join channel (by name) ─────────────────────────────────────
     socket.on('room:join', safeSocketHandler(socket, 'room:join', async ({ roomName }) => {
         const room = await Room.findOne({ name: roomName });
         if (!room) return socket.emit('error:general', 'Channel not found.');
-        if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
+        if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
             const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
             if (!allowed) return socket.emit('error:permission', 'This channel is private.');
         }
@@ -676,21 +685,21 @@ io.on('connection', async (socket) => {
         socket.emit('room:history', {
             roomName,
             messages: history.reverse().map(m => ({
-    id: m._id.toString(),
-    userId: m.userId.toString(),
-    username: m.username,
-    role: m.role,
-    text: m.text,
-    timestamp: m.createdAt,
-    deleted: m.deleted,
-    pinned: pinnedIds.includes(m._id.toString()),
-    editedAt: m.editedAt,
-    editHistory: m.editHistory,
+                id: m._id.toString(),
+                userId: m.userId.toString(),
+                username: m.username,
+                role: m.role,
+                text: m.text,
+                timestamp: m.createdAt,
+                deleted: m.deleted,
+                pinned: pinnedIds.includes(m._id.toString()),
+                editedAt: m.editedAt,
+                editHistory: m.editHistory,
 
-    // THREAD FIX
-    parentMessageId: m.parentMessageId,
-    replyCount: m.replyCount || 0,
-})),
+                // THREAD FIX
+                parentMessageId: m.parentMessageId,
+                replyCount: m.replyCount || 0,
+            })),
         });
         io.to(roomName).emit('room:notification', {
             text: `${socket.user.username} joined #${roomName}`, type: 'join',
@@ -701,7 +710,7 @@ io.on('connection', async (socket) => {
     socket.on('channel:join', safeSocketHandler(socket, 'channel:join', async ({ channelId }) => {
         const room = await Room.findById(channelId);
         if (!room) return socket.emit('error:general', 'Channel not found.');
-        if (room.isPrivate && dbUser.role === ROLES.MEMBER) {
+        if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
             const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
             if (!allowed) return socket.emit('error:permission', 'This channel is private.');
         }
@@ -715,21 +724,21 @@ io.on('connection', async (socket) => {
         socket.emit('channel:history', {
             channelId,
             messages: history.reverse().map(m => ({
-    id: m._id.toString(),
-    userId: m.userId.toString(),
-    username: m.username,
-    role: m.role,
-    text: m.text,
-    timestamp: m.createdAt,
-    deleted: m.deleted,
-    pinned: pinnedIds.includes(m._id.toString()),
-    editedAt: m.editedAt,
-    editHistory: m.editHistory,
+                id: m._id.toString(),
+                userId: m.userId.toString(),
+                username: m.username,
+                role: m.role,
+                text: m.text,
+                timestamp: m.createdAt,
+                deleted: m.deleted,
+                pinned: pinnedIds.includes(m._id.toString()),
+                editedAt: m.editedAt,
+                editHistory: m.editHistory,
 
-    // THREAD FIX
-    parentMessageId: m.parentMessageId,
-    replyCount: m.replyCount || 0,
-})),
+                // THREAD FIX
+                parentMessageId: m.parentMessageId,
+                replyCount: m.replyCount || 0,
+            })),
             roomSettings: roomToChannel(room),
         });
     }, 'Failed to join channel.'));
@@ -950,7 +959,7 @@ io.on('connection', async (socket) => {
     }, 'Failed to delete message.'));
 
     // ── Edit Message ───────────────────────────────────────────────
-    socket.on('message:edit', async ({ channelId, roomName: rName, messageId, newText }) => {
+    socket.on('message:edit',safeSocketHandler(socket,'message:edit', async ({ channelId, roomName: rName, messageId, newText }) => {
         const trimmed = newText?.trim();
         if (!trimmed) return socket.emit('error:message', 'Cannot edit message to empty text.');
 
@@ -994,53 +1003,134 @@ io.on('connection', async (socket) => {
 
         const bc = channelId ? io.to(channelId) : io.to(rName);
         bc.emit('message:edited', payload);
-    });
+    },'Failed to edit message.'));
 
     socket.on(
-  'thread:get',
-  safeSocketHandler(
-    socket,
-    'thread:get',
-    async ({ parentMessageId }) => {
+        'thread:get',
+        safeSocketHandler(
+            socket,
+            'thread:get',
+            async ({ parentMessageId }) => {
 
-      if (!parentMessageId) return;
+                if (!parentMessageId) return;
 
-      const parentMsg = await Message.findById(parentMessageId);
-      if (!parentMsg) return socket.emit('error:general', 'Parent message not found.');
+                const parentMsg = await Message.findById(parentMessageId);
+                if (!parentMsg) return socket.emit('error:general', 'Parent message not found.');
 
-      // Prevent IDOR: Check room access
-      const room = await Room.findOne({ name: parentMsg.roomName });
-      if (!room) return socket.emit('error:permission', 'Forbidden: This thread is unavailable.');
-      if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
-          const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
-          if (!allowed) return socket.emit('error:permission', 'Forbidden: This thread is in a private channel.');
-      }
+                // Prevent IDOR: Check room access
+                const room = await Room.findOne({ name: parentMsg.roomName });
+                if (!room) return socket.emit('error:permission', 'Forbidden: This thread is unavailable.');
+                if (room.isPrivate && socket.user.role === ROLES.MEMBER) {
+                    const allowed = room.allowedUsers.map(id => id.toString()).includes(socket.user.id);
+                    if (!allowed) return socket.emit('error:permission', 'Forbidden: This thread is in a private channel.');
+                }
 
-      const replies = await Message.find({
-        parentMessageId,
-        deleted: false,
-      })
-        .sort({ createdAt: 1 })
-        .lean();
+                const replies = await Message.find({
+                    parentMessageId,
+                    deleted: false,
+                })
+                    .sort({ createdAt: 1 })
+                    .lean();
 
-      socket.emit('thread:history', {
-        parentMessageId,
-        replies: replies.map((m) => ({
-          id: m._id.toString(),
-          userId: m.userId.toString(),
-          username: m.username,
-          role: m.role,
-          text: m.text,
-          timestamp: m.createdAt,
-          deleted: m.deleted,
-          editedAt: m.editedAt,
-          replyCount: m.replyCount,
-          parentMessageId: m.parentMessageId,
-        })),
-      });
-    }
-  )
-);
+                socket.emit('thread:history', {
+                    parentMessageId,
+                    replies: replies.map((m) => ({
+                        id: m._id.toString(),
+                        userId: m.userId.toString(),
+                        username: m.username,
+                        role: m.role,
+                        text: m.text,
+                        timestamp: m.createdAt,
+                        deleted: m.deleted,
+                        editedAt: m.editedAt,
+                        replyCount: m.replyCount,
+                        parentMessageId: m.parentMessageId,
+                    })),
+                });
+            }
+        )
+    );
+
+    // ── Emoji Reactions ───────────────────────────────────────────
+    socket.on(
+        'message:reaction',
+        safeSocketHandler(
+            socket,
+            'message:reaction',
+            async ({ messageId, emoji }) => {
+
+                const message = await Message.findById(messageId);
+
+                if (!message)
+                    return socket.emit('error:general', 'Message not found.');
+
+                let reaction = message.reactions.find(
+                    r => r.emoji === emoji
+                );
+
+                if (!reaction) {
+
+                    message.reactions.push({
+                        emoji,
+                        users: [socket.user.username]
+                    });
+
+                } else {
+
+                    const alreadyReacted = reaction.users.includes(
+                        socket.user.username
+                    );
+
+                    if (alreadyReacted) {
+
+                        reaction.users = reaction.users.filter(
+                            user => user !== socket.user.username
+                        );
+
+                        // remove empty emoji group
+                        if (reaction.users.length === 0) {
+                            message.reactions = message.reactions.filter(
+                                r => r.emoji !== emoji
+                            );
+                        }
+
+                    } else {
+                        reaction.users.push(socket.user.username);
+                    }
+                }
+
+                await message.save();
+
+                const updatedMessage = await Message.findById(messageId);
+
+                const room = await Room.findOne({
+                    name: message.roomName
+                });
+
+                if (room) {
+
+                    const payload = {
+                        messageId,
+                        reactions: updatedMessage.reactions,
+                    };
+
+                    // users joined via room id
+                    io.to(room._id.toString()).emit(
+                        'message:reaction:update',
+                        payload
+                    );
+
+                    // users joined via room name
+                    io.to(message.roomName).emit(
+                        'message:reaction:update',
+                        payload
+                    );
+                }
+
+            }
+        ),
+        'Failed to react to message.'
+    );
 
     // ── Category CRUD ──────────────────────────────────────────────
     socket.on('category:create', safeSocketHandler(socket, 'category:create', async ({ name }) => {
