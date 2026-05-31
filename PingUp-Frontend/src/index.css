@@ -4077,7 +4077,6 @@ body {
   border-radius: 6px;
   box-shadow: 0 0 0 3px var(--accent-muted);
 }
-
 .auth-field label {
   display: flex;
   align-items: center;
@@ -4097,7 +4096,7 @@ body {
 
 .auth-field input {
   width: 100%;
-  padding: 12px 14px;
+  padding: 12px 52px 12px 14px;
   background: #151e1e;
   border: 1px solid rgba(74, 158, 142, .15);
   border-radius: 6px;
@@ -6227,7 +6226,7 @@ body {
 .reg-field input,
 .reg-field select {
   width: 100%;
-  padding: 10px 12px;
+  padding: 10px 52px 10px 12px;
   background: #151e1e;
   border: 1px solid rgba(74, 158, 142, .12);
   border-radius: 4px;
