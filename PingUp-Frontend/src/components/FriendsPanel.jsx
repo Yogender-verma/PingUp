@@ -1,4 +1,18 @@
 import { useState } from 'react';
+const clearButtonBaseStyle = {
+  background: 'rgba(255,255,255,0.1)',
+  border: 'none',
+  cursor: 'pointer',
+  color: 'var(--text-muted)',
+  fontSize: '12px',
+  width: '22px',
+  height: '22px',
+  borderRadius: '50%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  transition: 'background-color 0.2s, opacity 0.2s'
+};
 
 export default function FriendsPanel({ onlineUsers }) {
   const [tab, setTab] = useState('online');
@@ -97,21 +111,14 @@ export default function FriendsPanel({ onlineUsers }) {
             {addFriendInput.trim().length > 0 && (
               <button
                 type="button"
+                aria-label="Clear username input"
                 onClick={() => setAddFriendInput('')}
                 style={{
-                  background: 'rgba(255,255,255,0.1)',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: 'var(--text-muted)',
-                  fontSize: '12px',
-                  width: '22px',
-                  height: '22px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  ...clearButtonBaseStyle,
                   marginLeft: '8px'
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
               >
                 ✕
               </button>
@@ -160,28 +167,20 @@ export default function FriendsPanel({ onlineUsers }) {
             />
 
             {/* Clear Button for Main Search */}
-            {search.trim() && (
+            {search.trim().length > 0 && (
               <button
                 type="button"
+                aria-label="Clear search input"
                 onClick={() => setSearch('')}
                 style={{
+                  ...clearButtonBaseStyle,
                   position: 'absolute',
                   right: '10px',
                   top: '50%',
-                  transform: 'translateY(-50%)',
-                  background: 'rgba(255,255,255,0.1)',
-                  border: 'none', // Removed border to match add friend styling
-                  cursor: 'pointer',
-                  color: '#fff',
-                  fontSize: '12px', // Scaled down slightly for better centering
-                  width: '22px',
-                  height: '22px',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  zIndex: 10
+                  transform: 'translateY(-50%)'
                 }}
+                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
+                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
               >
                 ✕
               </button>
