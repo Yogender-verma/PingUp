@@ -68,6 +68,11 @@ test('first test does not leak JWT_SECRET into process.env', () => {
     const { verifyToken } = require('../middleware/auth');
     verifyToken('signed-token');
   } finally {
+    if (beforeAll === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = beforeAll;
+    }
     Module._load = originalLoad;
     delete require.cache[require.resolve('../middleware/auth')];
   }
