@@ -34,22 +34,21 @@ const ServerSettings = require('./models/ServerSettings');
 const app = express();
 const server = http.createServer(app);
 
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map(origin => origin.trim())
+    : [
+        "http://localhost:5173",
+        "https://pingupsite.onrender.com"
+      ];
+
 const io = new Server(server, {
     cors: {
-        origin: [
-            "http://localhost:5173",
-            "https://pingupsite.onrender.com"
-        ],
+        origin: allowedOrigins,
         methods: ["GET", "POST"],
         credentials: true
     }
 });
 io.adapter(createAdapter(pubClient, subClient));
-
-const allowedOrigins = [
-    "http://localhost:5173",
-    "https://pingupsite.onrender.com"
-];
 
 app.use(
     cors({
