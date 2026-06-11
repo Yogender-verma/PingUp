@@ -239,14 +239,40 @@ export default function MessageList({
       )} */}
 
       {/* ── Room status badges ── */}
-      {(roomSettings?.isReadOnly || roomSettings?.isLocked || roomSettings?.isPrivate) && (
-        <div className="msg-room-status-row">
-          {roomSettings.isReadOnly && <span className="msg-room-badge badge-readonly">🔇 Read-only</span>}
-          {roomSettings.isLocked   && <span className="msg-room-badge badge-locked">🔒 Locked</span>}
-          {roomSettings.isPrivate  && <span className="msg-room-badge badge-private">👁️ Private</span>}
-        </div>
-      )}
+      {(
+  roomSettings?.isReadOnly ||
+  roomSettings?.isLocked ||
+  roomSettings?.isPrivate ||
+  roomSettings?.slowModeSeconds > 0
+) && (
+  <div className="msg-room-status-row">
 
+    {roomSettings.isReadOnly && (
+      <span className="msg-room-badge badge-readonly">
+        🔇 Read-only
+      </span>
+    )}
+
+    {roomSettings.isLocked && (
+      <span className="msg-room-badge badge-locked">
+        🔒 Locked
+      </span>
+    )}
+
+    {roomSettings.isPrivate && (
+      <span className="msg-room-badge badge-private">
+        👁️ Private
+      </span>
+    )}
+
+    {roomSettings?.slowModeSeconds > 0 && (
+      <span className="msg-room-badge badge-slowmode">
+        🐢 Slow Mode ({roomSettings.slowModeSeconds}s)
+      </span>
+    )}
+
+  </div>
+)}
       {/* ── Notifications ── */}
       {notifications.map((n, i) => (
         <div key={i} className="msg-notification">{n}</div>
