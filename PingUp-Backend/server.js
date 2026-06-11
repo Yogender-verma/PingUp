@@ -1003,11 +1003,15 @@ replyCount: 0, imageUrl: imageUrl || null,
 
     // ── Typing ─────────────────────────────────────────────────────
     socket.on('typing:start', ({ roomName, channelId }) => {
+        const target = channelId || roomName;
+        socket.typingIn = target;
         socket.to(channelId || roomName).emit('typing:update', {
             username: socket.user.username, typing: true,
         });
     });
     socket.on('typing:stop', ({ roomName, channelId }) => {
+        const target = channelId || roomName;
+        socket.typingIn = null; 
         socket.to(channelId || roomName).emit('typing:update', {
             username: socket.user.username, typing: false,
         });
@@ -1531,10 +1535,12 @@ replyCount: 0, imageUrl: imageUrl || null,
 
     socket.on('dm:typing:start', ({ toUserId }) => {
         const convId = [socket.user.id, toUserId].sort().join('_');
+        socket.dmTypingIn = `dm:${convId}`;
         socket.to(`dm:${convId}`).emit('dm:typing', { username: socket.user.username, typing: true });
     });
     socket.on('dm:typing:stop', ({ toUserId }) => {
         const convId = [socket.user.id, toUserId].sort().join('_');
+        socket.dmTypingIn = null;
         socket.to(`dm:${convId}`).emit('dm:typing', { username: socket.user.username, typing: false });
     });
 
@@ -1543,6 +1549,17 @@ replyCount: 0, imageUrl: imageUrl || null,
         // Remove this socket from the user's active-socket set in Redis
         await redisClient.sRem(`user:sockets:${socket.user.id}`, socket.id);
         const socketCount = await redisClient.sCard(`user:sockets:${socket.user.id}`);
+        
+        if (socket.typingIn) {
+            socket.to(socket.typingIn).emit('typing:update', {
+                username: socket.user.username, typing: false,
+            });
+        }
+        if (socket.dmTypingIn) {
+            socket.to(socket.dmTypingIn).emit('dm:typing', {
+                username: socket.user.username, typing: false,
+            });
+        }
 
         if (socketCount === 0) {
             // Last tab closed — the user is truly offline now

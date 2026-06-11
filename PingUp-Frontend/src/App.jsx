@@ -232,6 +232,7 @@ const [threadReplies, setThreadReplies] = useState([]);
     });
 
     socket.on('disconnect', (reason) => {
+      setDmTypingUser(null)
       if (reason === 'io server disconnect') {
         console.error('[socket] Server disconnected this client:', reason);
         setSessionMsg('You were disconnected by the server. Please log in again.');
