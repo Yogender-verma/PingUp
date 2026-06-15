@@ -66,14 +66,18 @@ export default function DMChat({ currentUser, otherUser, token, socket, onClose 
       setMessages(prev => prev.map(m => ({ ...m, read: true })));
     };
 
+    const onDisconnect = () => setIsTyping(false);
+
     socket.on('dm:message', onMessage);
     socket.on('dm:typing', onTyping);
     socket.on('dm:read', onRead);
+    socket.on('disconnect', onDisconnect);
 
     return () => {
       socket.off('dm:message', onMessage);
       socket.off('dm:typing', onTyping);
       socket.off('dm:read', onRead);
+      socket.off('disconnect', onDisconnect);
     };
   }, [otherUserId, token, socket, currentUsername]);
 

@@ -998,6 +998,13 @@ io.on('connection', async (socket) => {
                 const trimmed = text?.trim();
                if (!trimmed && !imageUrl) return;
 
+               if (trimmed && trimmed.length > MAX_MESSAGE_LENGTH) {
+                   return socket.emit(
+                       'error:general',
+                       `Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`
+                   );
+               }
+
                 let resolvedRoom = roomName;
                 let room = null;
                 if (channelId) {
@@ -1521,6 +1528,12 @@ io.on('connection', async (socket) => {
 
     socket.on('dm:send', safeSocketHandler(socket, 'dm:send', async ({ toUserId, text, clientId }, callback) => {
         try {
+            if (text && text.trim().length > MAX_MESSAGE_LENGTH) {
+                if (typeof callback === 'function') {
+                    return callback({ error: `Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`, status: 'failed' });
+                }
+                return socket.emit('error:general', `Message exceeds maximum length of ${MAX_MESSAGE_LENGTH} characters.`);
+            }
             if (clientId) {
                 const existingMsg = await DirectMessage.findOne({ clientId });
 
