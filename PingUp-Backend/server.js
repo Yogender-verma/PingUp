@@ -98,19 +98,38 @@ async function broadcastUserList() {
 async function evictUnauthorizedSockets(room) {
     if (!room.isPrivate) return; // only act when it IS now private
 
-    const roomSockets = await io.in(room._id.toString()).fetchSockets();
+    const roomIdStr = room._id.toString();
+
+    // ✅ Fetch from BOTH join paths — some sockets join by _id, others by name
+    const [socketsByIdArr, socketsByNameArr] = await Promise.all([
+        io.in(roomIdStr).fetchSockets(),
+        io.in(room.name).fetchSockets(),
+    ]);
+
+    // Deduplicate — a socket may appear in both sets
+    const seen = new Set();
+    const allSockets = [];
+    for (const s of [...socketsByIdArr, ...socketsByNameArr]) {
+        if (!seen.has(s.id)) {
+            seen.add(s.id);
+            allSockets.push(s);
+        }
+    }
+
     const allowedSet = new Set(room.allowedUsers.map(id => id.toString()));
 
-    for (const s of roomSockets) {
+    for (const s of allSockets) {
         const isOwnerOrAdmin =
             s.user?.role === ROLES.OWNER || s.user?.role === ROLES.ADMIN;
         if (isOwnerOrAdmin) continue; // owners/admins always keep access
 
         const isAllowed = allowedSet.has(s.user?.id?.toString());
         if (!isAllowed) {
-            s.leave(room._id.toString());
+            // ✅ Leave BOTH room identifiers so no messages leak through
+            s.leave(roomIdStr);
+            s.leave(room.name);
             s.emit('channel:kicked', {
-                channelId: room._id.toString(),
+                channelId: roomIdStr,
                 reason: 'This channel has been made private.',
             });
         }
